@@ -237,7 +237,7 @@ public abstract class GridCacheAbstractFullApiSelfTest extends GridCacheAbstract
 
     /** {@inheritDoc} */
     @Override protected void afterTestsStopped() throws Exception {
-        IgniteExProcessProxy.killAll();
+//        IgniteExProcessProxy.killAll();
 
         super.afterTestsStopped();
     }
