@@ -255,16 +255,29 @@ public class GridProjectionSelfTest extends GridProjectionAbstractTest {
     public void testForHost() throws Exception {
         Collection<ClusterNode> allNodes = ignite.cluster().nodes();
         ClusterNode localNode = ignite.cluster().localNode();
-        ArrayList<String> inputHostNames = new ArrayList<String> ();
+        List<String> inputHostNames = new ArrayList<>();
 
         for (ClusterNode currentNode : allNodes)
-            Collections.addAll(inputHostNames, currentNode.hostNames().toArray(new String[0]));
+            inputHostNames.addAll(currentNode.hostNames());
 
-        String[] inputHostNamesArray = inputHostNames.toArray(new String[] {});
-        ClusterGroup resultGroup = ignite.cluster().forHost(inputHostNamesArray[0], inputHostNamesArray);
-	ClusterGroup nullTestGroup = ignite.cluster().forHost(null, null);
+//        String[] inputHostNamesArray = inputHostNames.toArray(new String[] {});
+        ClusterGroup resultGroup = ignite.cluster().forHost(inputHostNames.get(0), inputHostNames);
+        ClusterGroup nullTestGroup = ignite.cluster().forHost(null, null);
 
-        assert((resultGroup.node(localNode.id())) != null);
-        assert((nullTestGroup.node(localNode.id())) == null);
+        assert ((resultGroup.node(localNode.id())) != null);
+        assert ((nullTestGroup.node(localNode.id())) == null);
+    }
+
+    /**
+     * @throws Exception If failed.
+     */
+    public void testForHost2() throws Exception {
+        ClusterGroup myHost = ignite.cluster().forHost("my_host");
+
+        Collection<ClusterNode> nodes = myHost.nodes();
+
+        for (ClusterNode node : nodes) {
+            if (node.hostNames())
+        }
     }
 }
