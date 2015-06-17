@@ -45,18 +45,21 @@ public class InteropIgnition {
      * @param gridName Grid name.
      * @param factoryId Factory ID.
      * @param envPtr Environment pointer.
+     * @param dataPtr Optional pointer to additional data required for startup.
      * @return Ignite instance.
      */
     public static synchronized InteropProcessor start(@Nullable String springCfgPath, @Nullable String gridName,
-        int factoryId, long envPtr) {
+        int factoryId, long envPtr, long dataPtr) {
         IgniteConfiguration cfg = configuration(springCfgPath);
 
         if (gridName != null)
             cfg.setGridName(gridName);
+        else
+            gridName = cfg.getGridName();
 
         InteropBootstrap bootstrap = bootstrap(factoryId);
 
-        InteropProcessor proc = bootstrap.start(cfg, envPtr);
+        InteropProcessor proc = bootstrap.start(cfg, envPtr, dataPtr);
 
         trackFinalization(proc);
 

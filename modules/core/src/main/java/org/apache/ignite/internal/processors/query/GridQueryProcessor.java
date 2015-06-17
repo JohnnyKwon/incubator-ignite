@@ -135,7 +135,7 @@ public class GridQueryProcessor extends GridProcessorAdapter {
 
                     TypeId typeId;
 
-                    if (valCls == null || ctx.cacheObjects().isPortableClass(valCls)) {
+                    if (valCls == null || ctx.cacheObjects().isPortableEnabled()) {
                         processPortableMeta(meta, desc);
 
                         typeId = new TypeId(ccfg.getName(), ctx.cacheObjects().typeId(meta.getValueType()));
@@ -513,8 +513,8 @@ public class GridQueryProcessor extends GridProcessorAdapter {
      * @throws IgniteCheckedException If failed.
      */
     @SuppressWarnings("unchecked")
-    public <K, V> GridCloseableIterator<IgniteBiTuple<K, V>> query(String space, String clause,
-        Collection<Object> params, String resType, IndexingQueryFilter filters)
+    public <K, V> GridCloseableIterator<IgniteBiTuple<K, V>> query(final String space, final String clause,
+        final Collection<Object> params, final String resType, final IndexingQueryFilter filters)
         throws IgniteCheckedException {
         checkEnabled();
 
@@ -522,12 +522,18 @@ public class GridQueryProcessor extends GridProcessorAdapter {
             throw new IllegalStateException("Failed to execute query (grid is stopping).");
 
         try {
-            TypeDescriptor type = typesByName.get(new TypeName(space, resType));
+            final GridCacheContext<?, ?> cctx = ctx.cache().internalCache(space).context();
 
-            if (type == null || !type.registered())
-                throw new CacheException("Failed to find SQL table for type: " + resType);
+            return executeQuery(cctx, new IgniteOutClosureX<GridCloseableIterator<IgniteBiTuple<K, V>>>() {
+                @Override public GridCloseableIterator<IgniteBiTuple<K, V>> applyx() throws IgniteCheckedException {
+                    TypeDescriptor type = typesByName.get(new TypeName(space, resType));
 
-            return idx.query(space, clause, params, type, filters);
+                    if (type == null || !type.registered())
+                        throw new CacheException("Failed to find SQL table for type: " + resType);
+
+                    return idx.query(space, clause, params, type, filters);
+                }
+            });
         }
         finally {
             busyLock.leaveBusy();
@@ -539,16 +545,26 @@ public class GridQueryProcessor extends GridProcessorAdapter {
      * @param qry Query.
      * @return Cursor.
      */
-    public QueryCursor<List<?>> queryTwoStep(String space, GridCacheTwoStepQuery qry) {
+    public Iterable<List<?>> queryTwoStep(String space, final GridCacheTwoStepQuery qry) {
         checkxEnabled();
 
         if (!busyLock.enterBusy())
             throw new IllegalStateException("Failed to execute query (grid is stopping).");
 
         try {
-            return idx.queryTwoStep(
-                ctx.cache().internalCache(space).context(),
-                qry);
+            final GridCacheContext<Object, Object> cctx = ctx.cache().internalCache(space).context();
+
+            return executeQuery(cctx, new IgniteOutClosureX<Iterable<List<?>>>() {
+                @Override public Iterable<List<?>> applyx() throws IgniteCheckedException {
+                    return idx.queryTwoStep(
+                        cctx,
+                        qry,
+                        cctx.keepPortable());
+                }
+            });
+        }
+        catch (IgniteCheckedException e) {
+            throw new IgniteException(e);
         }
         finally {
             busyLock.leaveBusy();
@@ -560,14 +576,21 @@ public class GridQueryProcessor extends GridProcessorAdapter {
      * @param qry Query.
      * @return Cursor.
      */
-    public QueryCursor<List<?>> queryTwoStep(GridCacheContext<?,?> cctx, SqlFieldsQuery qry) {
+    public QueryCursor<List<?>> queryTwoStep(final GridCacheContext<?,?> cctx, final SqlFieldsQuery qry) {
         checkxEnabled();
 
         if (!busyLock.enterBusy())
             throw new IllegalStateException("Failed to execute query (grid is stopping).");
 
         try {
-            return idx.queryTwoStep(cctx, qry);
+            return executeQuery(cctx, new IgniteOutClosureX<QueryCursor<List<?>>>() {
+                @Override public QueryCursor<List<?>> applyx() throws IgniteCheckedException {
+                    return idx.queryTwoStep(cctx, qry);
+                }
+            });
+        }
+        catch (IgniteCheckedException e) {
+            throw new IgniteException(e);
         }
         finally {
             busyLock.leaveBusy();
@@ -579,14 +602,21 @@ public class GridQueryProcessor extends GridProcessorAdapter {
      * @param qry Query.
      * @return Cursor.
      */
-    public <K,V> QueryCursor<Cache.Entry<K,V>> queryTwoStep(GridCacheContext<?,?> cctx, SqlQuery qry) {
+    public <K,V> QueryCursor<Cache.Entry<K,V>> queryTwoStep(final GridCacheContext<?,?> cctx, final SqlQuery qry) {
         checkxEnabled();
 
         if (!busyLock.enterBusy())
             throw new IllegalStateException("Failed to execute query (grid is stopping).");
 
         try {
-            return idx.queryTwoStep(cctx, qry);
+            return executeQuery(cctx, new IgniteOutClosureX<QueryCursor<Cache.Entry<K, V>>>() {
+                @Override public QueryCursor<Cache.Entry<K, V>> applyx() throws IgniteCheckedException {
+                    return idx.queryTwoStep(cctx, qry);
+                }
+            });
+        }
+        catch (IgniteCheckedException e) {
+            throw new IgniteException(e);
         }
         finally {
             busyLock.leaveBusy();
@@ -695,7 +725,7 @@ public class GridQueryProcessor extends GridProcessorAdapter {
     /**
      * Closeable iterator.
      */
-    private static interface ClIter<X> extends AutoCloseable, Iterator<X> {
+    private interface ClIter<X> extends AutoCloseable, Iterator<X> {
         // No-op.
     }
 
@@ -715,12 +745,15 @@ public class GridQueryProcessor extends GridProcessorAdapter {
                     String sql = qry.getSql();
                     Object[] args = qry.getArgs();
 
-                    GridQueryFieldsResult res = idx.queryFields(space, sql, F.asList(args), idx.backupFilter());
+                    final GridQueryFieldsResult res = idx.queryFields(space, sql, F.asList(args), idx.backupFilter());
 
                     sendQueryExecutedEvent(sql, args);
 
-                    QueryCursorImpl<List<?>> cursor = new QueryCursorImpl<>(
-                        new GridQueryCacheObjectsIterator(res.iterator(), cctx, cctx.keepPortable()));
+                    QueryCursorImpl<List<?>> cursor = new QueryCursorImpl<>(new Iterable<List<?>>() {
+                        @Override public Iterator<List<?>> iterator() {
+                            return new GridQueryCacheObjectsIterator(res.iterator(), cctx, cctx.keepPortable());
+                        }
+                    });
 
                     cursor.fieldsMeta(res.metaData());
 
@@ -804,24 +837,30 @@ public class GridQueryProcessor extends GridProcessorAdapter {
      * @throws IgniteCheckedException If failed.
      */
     @SuppressWarnings("unchecked")
-    public <K, V> GridCloseableIterator<IgniteBiTuple<K, V>> queryText(String space, String clause, String resType,
-        IndexingQueryFilter filters) throws IgniteCheckedException {
+    public <K, V> GridCloseableIterator<IgniteBiTuple<K, V>> queryText(final String space, final String clause,
+        final String resType, final IndexingQueryFilter filters) throws IgniteCheckedException {
         checkEnabled();
 
         if (!busyLock.enterBusy())
             throw new IllegalStateException("Failed to execute query (grid is stopping).");
 
         try {
-            TypeDescriptor type = typesByName.get(new TypeName(space, resType));
+            final GridCacheContext<?, ?> cctx = ctx.cache().internalCache(space).context();
 
-            if (type == null || !type.registered())
-                throw new CacheException("Failed to find SQL table for type: " + resType);
+            return executeQuery(cctx, new IgniteOutClosureX<GridCloseableIterator<IgniteBiTuple<K, V>>>() {
+                @Override public GridCloseableIterator<IgniteBiTuple<K, V>> applyx() throws IgniteCheckedException {
+                    TypeDescriptor type = typesByName.get(new TypeName(space, resType));
 
-            return idx.queryText(
-                space,
-                clause,
-                type,
-                filters);
+                    if (type == null || !type.registered())
+                        throw new CacheException("Failed to find SQL table for type: " + resType);
+
+                    return idx.queryText(
+                        space,
+                        clause,
+                        type,
+                        filters);
+                }
+            });
         }
         finally {
             busyLock.leaveBusy();
@@ -836,15 +875,21 @@ public class GridQueryProcessor extends GridProcessorAdapter {
      * @return Field rows.
      * @throws IgniteCheckedException If failed.
      */
-    public GridQueryFieldsResult queryFields(@Nullable String space, String clause, Collection<Object> params,
-        IndexingQueryFilter filters) throws IgniteCheckedException {
+    public GridQueryFieldsResult queryFields(@Nullable final String space, final String clause,
+        final Collection<Object> params, final IndexingQueryFilter filters) throws IgniteCheckedException {
         checkEnabled();
 
         if (!busyLock.enterBusy())
             throw new IllegalStateException("Failed to execute query (grid is stopping).");
 
         try {
-            return idx.queryFields(space, clause, params, filters);
+            final GridCacheContext<?, ?> cctx = ctx.cache().internalCache(space).context();
+
+            return executeQuery(cctx, new IgniteOutClosureX<GridQueryFieldsResult>() {
+                @Override public GridQueryFieldsResult applyx() throws IgniteCheckedException {
+                    return idx.queryFields(space, clause, params, filters);
+                }
+            });
         }
         finally {
             busyLock.leaveBusy();
@@ -1712,6 +1757,7 @@ public class GridQueryProcessor extends GridProcessorAdapter {
         }
 
         /** {@inheritDoc} */
+        @SuppressWarnings("unchecked")
         @Override public <T> T value(String field, Object key, Object val) throws IgniteCheckedException {
             assert field != null;
 
