@@ -253,31 +253,31 @@ public class GridProjectionSelfTest extends GridProjectionAbstractTest {
      * @throws Exception If failed.
      */
     public void testForHost() throws Exception {
-        Collection<ClusterNode> allNodes = ignite.cluster().nodes();
-        ClusterNode localNode = ignite.cluster().localNode();
-        List<String> inputHostNames = new ArrayList<>();
-
-        for (ClusterNode currentNode : allNodes)
-            inputHostNames.addAll(currentNode.hostNames());
-
-//        String[] inputHostNamesArray = inputHostNames.toArray(new String[] {});
-        ClusterGroup resultGroup = ignite.cluster().forHost(inputHostNames.get(0), inputHostNames);
-        ClusterGroup nullTestGroup = ignite.cluster().forHost(null, null);
-
-        assert ((resultGroup.node(localNode.id())) != null);
-        assert ((nullTestGroup.node(localNode.id())) == null);
+//        Collection<ClusterNode> allNodes = ignite.cluster().nodes();
+//        ClusterNode localNode = ignite.cluster().localNode();
+//        List<String> inputHostNames = new ArrayList<>();
+//
+//        for (ClusterNode currentNode : allNodes)
+//            inputHostNames.addAll(currentNode.hostNames());
+//
+////        String[] inputHostNamesArray = inputHostNames.toArray(new String[] {});
+//        ClusterGroup resultGroup = ignite.cluster().forHost(inputHostNames.get(0), inputHostNames);
+//        ClusterGroup nullTestGroup = ignite.cluster().forHost(null, null);
+//
+//        assert ((resultGroup.node(localNode.id())) != null);
+//        assert ((nullTestGroup.node(localNode.id())) == null);
     }
 
     /**
      * @throws Exception If failed.
      */
     public void testForHost2() throws Exception {
-        ClusterGroup myHost = ignite.cluster().forHost("my_host");
-
-        Collection<ClusterNode> nodes = myHost.nodes();
-
-        for (ClusterNode node : nodes) {
-            if (node.hostNames())
-        }
+//        ClusterGroup myHost = ignite.cluster().forHost("my_host");
+//
+//        Collection<ClusterNode> nodes = myHost.nodes();
+//
+//        for (ClusterNode node : nodes) {
+//            if (node.hostNames())
+//        }
     }
 }
